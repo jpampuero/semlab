@@ -1,0 +1,235 @@
+SEM1D and SEM2D apply the Spectral Element Method
+to solve the 1D/2D scalar wave equation, 
+with stress free or absorbing boundary conditions,
+zero initial conditions
+and a time dependent point source or incident wave.
+
+These scripts are intended for tutorial purposes.
+
+Jean-Paul Ampuero	ampuero@erdw.ethz.ch
+
+
+
+0. SUMMARY:
+-----------
+
+1. Contents of this directory
+2. About the method
+3. Setting simulation parameters
+4. A tutorial tour
+5. Some references
+6. Other resources
+
+
+
+1. CONTENTS OF THIS DIRECTORY
+-----------------------------
+
+MAIN SCRIPTS:
+
+sem1d.m		1D wave equation with point source and Dirichlet boundaries
+sem1d_abso.m	1D SH general case, with paraxial absorbing condition
+sem1d_Matt.m	Same, with a "linear slip" fault. Illustrates the implementation
+		of split nodes, in a linear problem.
+sem1d_implicit.m	Same as sem1d.m, with implicit time scheme
+
+sem2d_0.m	2D SH in a square box, homogeneous medium, stress free boundaries
+sem2d_1a.m	2D SH in a rectangular box, heterogeneous medium
+
+sem2d_2.m	Same as 1a, with dynamic fault boundary (with friction)
+		 and paraxial absorbing boundaries
+sem2d_2b.m	Same as 2, "Explicit Newmark-alpha" (dissipative) time scheme 
+sem2d_2c.m	Same as 2, "Explicit Generalized-alpha" time scheme
+                 with optimized dissipation
+sem2d_NewmarkA1.m	Newmark as in SPECFEM3D: alpha=1,beta=0,gamma=1/2
+sem2d_NewmarkA1_scec2.m Same, parameters set as in the test problem #2 
+			of the SCEC 3D validation project
+sem2d_SplitPML_scec2.m	Same, with Perfectly Matched Layers (split field implementation)
+sem2d_UnsplitPML_scec2.m	Same, with PML (non-split field implementation)
+
+sem2d_plastic	Shear band propagation (strain-weakening visco-plasticity)
+sem2d_friction_plastic.m Dynamic earthquake rupture with slip weakeneing friction
+		and off-fault anelasticity (visco-plasticity)
+
+Roma_Norte/	Application: 1D seismograms in Mexico city,
+		includes attenuation by Rayleigh damping
+
+ANALYSIS OF THE METHOD:
+
+sem1d_modal_analysis.m	Eigenvalue solver, gives the modes of a 1D medium.
+sem1d_modal_example.m	Dispersion of SEM as a function of
+			polynomial degree and number of nodes per wavelength.
+sem1d_dispersion.m	Studies the discrete dispersion curves
+			and discrete boundary impedance as a function of frequency
+sem1d_impedance.m	Studies the discrete boundary impedance in time domain
+
+
+TOOLS:
+
+MeshBox.m	Builds the SEM grid for a rectangular domain
+FindNearestNode.m
+gll_*.tab 	Gauss-Lobatto-Legendre tables
+GetGLL.m 	Reads GLL tables
+src_timef.m	Source time functions
+Plot2dSnapshot.m
+PlotSeisTrace.m
+friction.m	Slip dependent friction laws
+
+
+
+2. ABOUT THE METHOD
+-------------------
+
+SPACE DISCRETIZATION is performed via the 
+Spectral Element Method (Patera, 1984).
+Some background about the SEM by can be found in
+sections 2.1 to 2.3 of www.mate.tue.nl/people/vosse/docs/vosse96b.pdf .
+The discretization of the 1D wave equation is similar to the
+treatment of the 1D Helmholtz equation in section 2.3.2.
+The SEM can be seen as a domain decomposition 
+version of a Spectral Method
+or as a high order version of the Finite Element Method.
+It inherits from its parent methods the accuracy (spectral 
+convergence) and the geometrical flexibility, respectively.
+The domain is decomposed in elements and each element 
+is provided with a spectral subgrid of Gauss-Lobatto-Legendre (GLL) nodes.
+The polynomial order P of the spatial approximation fixes 
+the number of GLL nodes (NGLL=P+1).
+SEM translates the weak form of the wave equation 
+into an algebraic system (like in FEM)
+  M*a = -K*d + f
+where the mass matrix M is diagonal by construction
+(mass lumping is not required).
+This property is achieved by taking the same nodes for 
+the interpolation and for the quadrature (Gauss-Lobatto-Legendre).
+In high dimensions a tensorial nodal basis is used.
+Relevant references are given in section 5. 
+
+TIME DISCRETIZATION of the system of equations M*a = -K*d +f
+is usually (in structural dynamics) performed via explicit 
+second-order schemes like Newmark or leap-frog.
+These are illustrated here, as well as a 4th-order explicit scheme
+and a 2d-order implicit scheme.
+
+
+3. SETTING SIMULATION PARAMETERS
+--------------------------------
+
+To set the parameters of the simulation 
+the following criteria must be understood:
+
+RESOLUTION (dispersion) is determined by the number 
+of GLL nodes per shortest wavelength. 
+See figure sem1d_hp_freq.ps in this directory.
+The shortest wavelength to be resolved is given by
+the wave velocity, vs=sqrt(mu/rho), divided by
+the highest frequency in the source time function, fmax. 
+For a Ricker wavelet fmax is approximatively 2.5 times 
+the fundamental frequency f0. 
+When the mesh is too coarse for a given fmax spurious oscillations appear.
+Resolution is controlled by the mesh density and
+can be improved by increasing either the number of elemenets (NEL)
+or the number of GLL nodes (NGLL).
+
+STABILITY in explicit time schemes is determined by 
+the CFL number = vs*dt/min(dx),
+the ratio of the distance travelled by a wave in one timestep
+to the shortest GLL node spacing.
+CFL must be smaller than a critical value that depends on the
+time scheme. For centered differences it is close to 0.85 in 1D.
+For 2D divide it by sqrt(2).
+Note that the spacing of the GLL nodes is not uniform and
+that as NGLL increases they cluster at the boundary of the elements.
+That's why we keep a moderate value NGLL<=10.
+
+
+
+4. A TUTORIAL TOUR
+------------------
+
+To get started with the implementation of SEM you should begin
+by having a look at sem1d.m (including the comments therein).
+This is the most basic script provided here, it solves the 1D wave equation.
+
+In sem1d_abso.m we add absorbing boundaries and an incident wavefield.
+
+
+5. SOME REFERENCES
+------------------
+
+About the SEM:
+
++ The fundation paper: A.T. Patera, "A spectral element method for
+   fluid dynamics: laminar flow in a channel expansion",
+   J. Comp. Phys., 54, pp. 468-488, 1984.
++ A tutorial exposition of the SEM and its connection
+   to other methods: F.N. van de Vosse and P.D. Minev, "Spectral
+   element methods: theory and applications"
+   EUT report 96-W-001, Eindhoven University of Technology (1996)
+   Available at: www.mate.tue.nl/people/vosse/docs/vosse96b.pdf
++ A chapter of a book in preparation, by J.P. Boyd
+   Available at: www.math.lsa.umich.edu/~karni/m501/boyd.pdf 
++ "New perspectives for spectral and high-order methods", 
+   SIAM News, 37 (1), Jan/Feb 2004
+   Available at: www.siam.org/siamnews/01-04/spectral.pdf
+
+More general books:
+
++ G.E. Karniadakis and S.J. Sherwin, "Spectral/Hp Element Methods 
+   for CFD", Oxford University Press, April 1999.
++ J.P. Boyd, "Chebyshev and Fourier Spectral Methods", 
+   Dover Pubns, 2nd Revision edition, December 2001.
+   Available at: www-personal.engin.umich.edu/~jpboyd/AOSS555.html
++ M.O. Deville, P.F. Fischer, E.H. Mund, "High Order Methods for 
+   Incompressible Fluid Flow", Cambridge Univ. Press, August 2002.
+
+About SEM for the seismic wave equation:
+
++ D. Komatitsch and J.-P. Vilotte, "The Spectral Element method: 
+   an efficient tool to simulate the seismic response of 2D and 
+   3D geological structures", Bull. Seismol. Soc. Am., vol.88, 
+   pp. 368-392, 1998.
++ D. Komatitsch and J. Tromp, "Introduction to the spectral-element 
+   method for 3-D seismic wave propagation", Geophys. J. Int.,
+   vol. 139, pp. 806-822, 1999.
+
+About SEM for earthquake dynamics:
+
++ Jean-Paul Ampuero's Ph.D. dissertation (2002), available at
+   www.sg.geophys.ethz.ch/geodynamics/ampuero/phd.html
+  (advisor: Jean-Pierre Vilotte, www.ipgp.jussieu.fr/~vilotte/mypage.html)
++ Gaetano Festa's dissertation (2003), available at
+   www.ipgp.jussieu.fr/~festa/
+
+On dispersion analysis:
+
++ L.L. Thompson and P.M. Pinsky, "Complex wave-number Fourier-analysis 
+   of the p-version Finite-Element Method", Comput. Mech., 13 (4)
+   pp. 255-275, 1994.
++ F. Ihlenburg and I. Babuska, "Finite Element Solution of the Helmholtz 
+   Equation with High Wave Number Part II: The h-p Version of the FEM",
+   SIAM J. Num. Anal., 34 (1), pp. 315-358, 1997. 
++ M. Ainsworth, "Discrete dispersion relation for hp-version finite
+   element approximation at high wavenumber", SIAM J. Num. Anal., 
+   42 (2), pp. 553-575, 2004.
+
+
+
+6. OTHER RESOURCES
+------------------
+
+For more serious simulations (large scale, more general features, etc)
+you can refer to the following free softwares:
+
++ SEM2DPACK by J.-P. Ampuero: 2D seismic wave propagation 
+   and rupture dynamics. In Fortran95.
+   Available at: http://www.sg.geophys.ethz.ch/geodynamics/ampuero//software.html
+
++ SPECFEM3D, by D. Komatitsch and J. Tromp: 3D seismic wave propagation, 
+   global and regional scales. In Fortran90 and MPI.
+   Available at: http://www.geoframework.org/downloads/list.html
+
+Other tutorial codes:
+
++ The book "Introduction to Finite and Spectral Element Methods in Matlab",
+and acompanying software FSELIB, http://dehesa.freeshell.org/FSELIB

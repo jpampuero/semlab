@@ -1,0 +1,387 @@
+<html xmlns:mwsh="http://www.mathworks.com/namespace/mcode/v1/syntaxhighlight.dtd">
+   <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   
+      <!--
+This HTML is auto-generated from an M-file.
+To make changes, update the M-file and republish this document.
+      -->
+      <title>SEM1D</title>
+      <meta name="generator" content="MATLAB 7.1">
+      <meta name="date" content="2006-07-19">
+      <meta name="m-file" content="sem1d"><style>
+
+body {
+  background-color: white;
+  margin:10px;
+}
+
+h1 {
+  color: #990000; 
+  font-size: x-large;
+}
+
+h2 {
+  color: #990000;
+  font-size: medium;
+}
+
+/* Make the text shrink to fit narrow windows, but not stretch too far in 
+wide windows.  On Gecko-based browsers, the shrink-to-fit doesn't work. */ 
+p,h1,h2,div.content div {
+  /* for MATLAB's browser */
+  width: 600px;
+  /* for Mozilla, but the "width" tag overrides it anyway */
+  max-width: 600px;
+  /* for IE */
+  width:expression(document.body.clientWidth > 620 ? "600px": "auto" );
+}
+
+pre.codeinput {
+  background: #EEEEEE;
+  padding: 10px;
+}
+
+span.keyword {color: #0000FF}
+span.comment {color: #228B22}
+span.string {color: #A020F0}
+span.untermstring {color: #B20000}
+span.syscmd {color: #B28C00}
+
+pre.codeoutput {
+  color: #666666;
+  padding: 10px;
+}
+
+pre.error {
+  color: red;
+}
+
+p.footer {
+  text-align: right;
+  font-size: xx-small;
+  font-weight: lighter;
+  font-style: italic;
+  color: gray;
+}
+
+  </style></head>
+   <body>
+      <div class="content">
+         <h1>SEM1D</h1>
+         <introduction>
+            <p>Spectral Element Method solver for the 1D wave equation</p>
+            <p><img vspace="5" hspace="5" src="sem1d_eq34128.png"> </p>
+            <p>with a time dependent point source F(t) located at <tt>x=xs</tt>, zero initial conditions and Dirichlet boundary conditions.
+            </p>
+            <p>This script is intended for tutorial purposes.</p>
+            <p>Jean-Paul Ampuero	&lt;mailto:ampuero@erdw.ethz.ch ampuero@erdw.ethz.ch&gt;</p>
+         </introduction>
+         <h2>Contents</h2>
+         <div>
+            <ul>
+               <li><a href="#1">STEP 1: SET PARAMETERS</a></li>
+               <li><a href="#2">STEP 2: INITIALIZATION</a></li>
+               <li><a href="#3">STEP 3: SOLVER</a></li>
+            </ul>
+         </div>
+         <h2>STEP 1: SET PARAMETERS<a name="1"></a></h2><pre class="codeinput">L=10;           <span class="comment">% domain size</span>
+NEL = 10;       <span class="comment">% number of elements</span>
+P = 6;          <span class="comment">% polynomial degree</span>
+CFL = 0.86;     <span class="comment">% stability number (&lt;=0.86)</span>
+NT = 1000;      <span class="comment">% number of timesteps</span>
+Fx = 5;         <span class="comment">% location of point source (required if F_IS_WAVE=0)</span>
+Ff0 = 0.25;     <span class="comment">% fundamental frequency of the source</span>
+OUTx  = (0:L/NEL:L)'; <span class="comment">% output receivers at these locations</span>
+</pre><h2>STEP 2: INITIALIZATION<a name="2"></a></h2><pre class="codeinput"><span class="comment">%-- Build the "macro-mesh":</span>
+<span class="comment">% The domain [0,L] is divided into NEL non overlapping elements</span>
+<span class="comment">% The elements are defined by their "control nodes" X</span>
+X = (0:NEL)'*L/NEL;
+
+<span class="comment">%-- Build the SEM grid:</span>
+<span class="comment">% SEM is a high-order method, each element of the macro-mesh</span>
+<span class="comment">% contains a spectral sub-grid of Gauss-Lobato-Legendre (GLL) internal nodes</span>
+NGLL = P+1; 				<span class="comment">% = number of GLL nodes per element</span>
+[iglob,coor,nglob] = mesh1d(X,NGLL);	<span class="comment">% creates the SEM grid</span>
+<span class="comment">% Look at the outputs in "help mesh1d".</span>
+<span class="comment">% You may be wondering what are "global" and "local" numberings.</span>
+<span class="comment">% Let's take an example. Consider a mesh of 3 elements with index e = 1 to 3</span>
+<span class="comment">%</span>
+<span class="comment">%X(1)                      X(2)                      X(3)                      X(4)</span>
+<span class="comment">% |----------- 1 -----------|----------- 2 -----------|----------- 3 -----------|</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">% Let's assume P=4 (NGLL=5). Each element is provided with a non uniform subgrid</span>
+<span class="comment">% of 5 GLL nodes ("o" are internal and "0" are inter-element nodes):</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">% 0----o-------o-------o----0----o-------o-------o----0----o-------o-------o----0</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">% Their global numbering is a continuous non redundant index:</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">% 1    2       3       4    5    6       7       8    9   10      11      12   13</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">% whereas their local numbering is a pair of indices (GLL-index,element-index):</span>
+<span class="comment">% :                         :                         :                         :</span>
+<span class="comment">%(1,1)(2,1)  (3,1)   (4,1)(5,1)                     (1,3)(2,3)   (3,3)   (4,3)(5,3)</span>
+<span class="comment">%                         (1,2)(2,2)   (3,2)   (4,2)(5,2)</span>
+<span class="comment">%</span>
+<span class="comment">% "iglob" is the table that allows to go from local to global indices,</span>
+<span class="comment">% i.e. iglob(i,e) is the global index of the i-th GLL node in the e-th element,</span>
+<span class="comment">% and "coor" are the coordinates of the "nglob" global nodes.</span>
+<span class="comment">%</span>
+<span class="comment">% In a SEM grid any quantity XXX with values at each node</span>
+<span class="comment">% can be stored either in "local storage" mode, where XXX(i,e) is the value at</span>
+<span class="comment">% the i-th GLL node of the e-th element, or in "global storage" mode,</span>
+<span class="comment">% where XXX(k) is the value at the k-th global node.</span>
+<span class="comment">% The choice depends on the usage of XXX.</span>
+<span class="comment">% The local storage is more convenient for element-by-element access</span>
+<span class="comment">% whereas the global storage naturally avoids redundant operations.</span>
+<span class="comment">% Quantities that can be discontinuous across elements must be in local storage,</span>
+<span class="comment">% global storage is better for quantities that are continuous across elements.</span>
+
+<span class="comment">%-- Compute the mass and stiffness matrices</span>
+<span class="comment">% By SEM space-discretization the 1D wave equation is reduced</span>
+<span class="comment">% to the following algebraic system of ODEs:</span>
+<span class="comment">%</span>
+<span class="comment">% 	M*a = -K*d +F</span>
+<span class="comment">%</span>
+<span class="comment">% where M is the mass matrix and K the stiffness matrix.</span>
+<span class="comment">% M is diagonal by construction.</span>
+<span class="comment">% K is sparse, with blocks corresponding to the elements, so only the</span>
+<span class="comment">% elementary contributions are stored.</span>
+[M,K] = BuildMK_1d(coor,iglob);
+<span class="comment">% Have a look at BuilMK_1d.m for more details.</span>
+<span class="comment">% It is the first example of how a global array (the diagonal M of the mass matrix)</span>
+<span class="comment">% is assembled from elementary contributions with the help of the</span>
+<span class="comment">% local-to-global table "iglob".</span>
+
+<span class="comment">%-- Set the time step according to the stability condition</span>
+dt = CFL*(coor(2)-coor(1));	<span class="comment">% = CFL * minimum_GLL_node_spacing</span>
+t = (1:NT) *dt;
+
+<span class="comment">%-- Initialize kinematic fields, stored in global arrays</span>
+d = zeros(nglob,1);	<span class="comment">% displacement</span>
+v = zeros(nglob,1);	<span class="comment">% velocity</span>
+a = zeros(nglob,1);	<span class="comment">% acceleration</span>
+
+<span class="comment">%-- Source term</span>
+<span class="comment">% A point force located at Fx</span>
+<span class="comment">% For simplicity we relocate it to the nearest GLL node:</span>
+[Fdist,Fix] = min( abs(coor-Fx) );
+<span class="comment">% The source time function is a Ricker wavelet</span>
+Ft = src_timef( t-0.5*dt,<span class="string">'ricker'</span>, Ff0); <span class="comment">% at mid-steps, see time-stepping scheme</span>
+
+<span class="comment">%-- Output arrays</span>
+OUTnx = length(OUTx);
+<span class="comment">% relocate the receivers to the nearest GLL node</span>
+<span class="keyword">for</span> i=1:OUTnx, [OUTdist(i),OUTix(i)] = min( abs(coor-OUTx(i)) ); <span class="keyword">end</span>
+OUTx = coor(OUTix);
+OUTd = zeros(OUTnx,NT);
+OUTv = zeros(OUTnx,NT);
+OUTa = zeros(OUTnx,NT);
+
+<span class="comment">%------------------------------------------</span>
+</pre><h2>STEP 3: SOLVER<a name="3"></a></h2>
+         <p>The time-discretization of M*a = -K*d +F is done here with an explicit Newmark scheme (HHT-alpha) with alpha=beta=1/2 and
+            gamma=1
+         </p>
+         <p>	M*a(t+1) = -K*d(t+1/2) +F(t+1/2) 	d(t+1) = d(t) + dt*v(t) +0.5*dt^2 *a(t+1) 	v(t+1) = v(t) + dt*a(t+1)</p>
+         <p>implemented as an explicit predictor-corrector:</p><pre class="codeinput"><span class="keyword">for</span> it=1:NT, <span class="comment">% Begin time loop ...</span>
+
+<span class="comment">%   1. predictor at mid-step t+0.5, assuming a(t+1)=0</span>
+<span class="comment">%	dpre = d(t) +0.5*dt*v(t)</span>
+  d = d + 0.5*dt*v;
+
+<span class="comment">%   2. solve for a(t+1) in M*a(t+1) = -K*dpre +F(t+0.5)</span>
+<span class="comment">%</span>
+  a(:) = 0; 				<span class="comment">% Predicted internal forces</span>
+  <span class="keyword">for</span> e=1:NEL, 				<span class="comment">% at mid-step, -K*dpre,</span>
+    ix = iglob(:,e); 			<span class="comment">% temporarily stored in global array "a".</span>
+    a(ix) = a(ix) - K(:,:,e)*d(ix) ;	<span class="comment">% Note again the usage of "iglob" to</span>
+  <span class="keyword">end</span> 					<span class="comment">% assemble the elementary contributions.</span>
+  a(Fix) = a(Fix) + Ft(it); 		<span class="comment">% Add source</span>
+  a = a ./M ; 				<span class="comment">% Solve: a(t+1) = (-K*d_mid +F)/M</span>
+
+<span class="comment">%   3. corrector</span>
+<span class="comment">%	v(t+1) = v(t) + dt*a(t+1)</span>
+<span class="comment">%	d(t+1) = dpre + 0.5*dt*v(t+1)</span>
+  v = v + dt*a;
+  d = d + 0.5*dt*v;
+
+
+<span class="comment">%------------------------------------------</span>
+<span class="comment">% STEP 4: OUTPUT</span>
+
+  OUTd(:,it) = d(OUTix);
+  OUTv(:,it) = v(OUTix);
+  OUTa(:,it) = a(OUTix);
+
+<span class="keyword">end</span> <span class="comment">% ... of time loop</span>
+
+PlotSeisTrace(OUTx,t,OUTv);
+</pre><pre class="codeoutput">Amplitude (trace to trace) = 0.499929
+</pre><img vspace="5" hspace="5" src="sem1d_01.png"> <p class="footer"><br>
+            Published with MATLAB&reg; 7.1<br></p>
+      </div>
+      <!--
+##### SOURCE BEGIN #####
+%% SEM1D
+% Spectral Element Method solver for the 1D wave equation
+% 
+% $$u_{tt} = u_{xx} + F(t)\times\delta(x-xs)$$
+% 
+% with a time dependent point source F(t) located at |x=xs|,
+% zero initial conditions and Dirichlet boundary conditions.
+%
+% This script is intended for tutorial purposes.
+%
+% Jean-Paul Ampuero	ampuero@erdw.ethz.ch
+
+%% STEP 1: SET PARAMETERS 
+
+L=10;           % domain size
+NEL = 10;       % number of elements
+P = 6;          % polynomial degree
+CFL = 0.86;     % stability number (<=0.86)
+NT = 1000;      % number of timesteps
+Fx = 5;         % location of point source (required if F_IS_WAVE=0)
+Ff0 = 0.25;     % fundamental frequency of the source
+OUTx  = (0:L/NEL:L)'; % output receivers at these locations
+
+%% STEP 2: INITIALIZATION
+
+%REPLACE_WITH_DASH_DASH Build the "macro-mesh":
+% The domain [0,L] is divided into NEL non overlapping elements
+% The elements are defined by their "control nodes" X
+X = (0:NEL)'*L/NEL;
+
+%REPLACE_WITH_DASH_DASH Build the SEM grid:
+% SEM is a high-order method, each element of the macro-mesh
+% contains a spectral sub-grid of Gauss-Lobato-Legendre (GLL) internal nodes
+NGLL = P+1; 				% = number of GLL nodes per element
+[iglob,coor,nglob] = mesh1d(X,NGLL);	% creates the SEM grid	
+% Look at the outputs in "help mesh1d".
+% You may be wondering what are "global" and "local" numberings.
+% Let's take an example. Consider a mesh of 3 elements with index e = 1 to 3
+%
+%X(1)                      X(2)                      X(3)                      X(4)
+% |REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH- 1 REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-|REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH- 2 REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-|REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH- 3 REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-|
+% :                         :                         :                         :
+% Let's assume P=4 (NGLL=5). Each element is provided with a non uniform subgrid
+% of 5 GLL nodes ("o" are internal and "0" are inter-element nodes):
+% :                         :                         :                         :
+% 0REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHoREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH0REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHoREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH0REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHoREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH-oREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH0
+% :                         :                         :                         :
+% Their global numbering is a continuous non redundant index:
+% :                         :                         :                         :
+% 1    2       3       4    5    6       7       8    9   10      11      12   13
+% :                         :                         :                         :
+% whereas their local numbering is a pair of indices (GLL-index,element-index):
+% :                         :                         :                         :
+%(1,1)(2,1)  (3,1)   (4,1)(5,1)                     (1,3)(2,3)   (3,3)   (4,3)(5,3)
+%                         (1,2)(2,2)   (3,2)   (4,2)(5,2)
+%
+% "iglob" is the table that allows to go from local to global indices,
+% i.e. iglob(i,e) is the global index of the i-th GLL node in the e-th element,
+% and "coor" are the coordinates of the "nglob" global nodes.
+%
+% In a SEM grid any quantity XXX with values at each node
+% can be stored either in "local storage" mode, where XXX(i,e) is the value at 
+% the i-th GLL node of the e-th element, or in "global storage" mode, 
+% where XXX(k) is the value at the k-th global node.
+% The choice depends on the usage of XXX.
+% The local storage is more convenient for element-by-element access
+% whereas the global storage naturally avoids redundant operations.
+% Quantities that can be discontinuous across elements must be in local storage,
+% global storage is better for quantities that are continuous across elements.
+
+%REPLACE_WITH_DASH_DASH Compute the mass and stiffness matrices
+% By SEM space-discretization the 1D wave equation is reduced 
+% to the following algebraic system of ODEs:
+%
+% 	M*a = -K*d +F
+%
+% where M is the mass matrix and K the stiffness matrix.
+% M is diagonal by construction.
+% K is sparse, with blocks corresponding to the elements, so only the
+% elementary contributions are stored. 
+[M,K] = BuildMK_1d(coor,iglob);
+% Have a look at BuilMK_1d.m for more details.
+% It is the first example of how a global array (the diagonal M of the mass matrix) 
+% is assembled from elementary contributions with the help of the
+% local-to-global table "iglob".
+
+%REPLACE_WITH_DASH_DASH Set the time step according to the stability condition
+dt = CFL*(coor(2)-coor(1));	% = CFL * minimum_GLL_node_spacing
+t = (1:NT) *dt;
+
+%REPLACE_WITH_DASH_DASH Initialize kinematic fields, stored in global arrays
+d = zeros(nglob,1);	% displacement
+v = zeros(nglob,1);	% velocity
+a = zeros(nglob,1);	% acceleration
+
+%REPLACE_WITH_DASH_DASH Source term
+% A point force located at Fx
+% For simplicity we relocate it to the nearest GLL node:
+[Fdist,Fix] = min( abs(coor-Fx) );
+% The source time function is a Ricker wavelet
+Ft = src_timef( t-0.5*dt,'ricker', Ff0); % at mid-steps, see time-stepping scheme
+
+%REPLACE_WITH_DASH_DASH Output arrays
+OUTnx = length(OUTx);
+% relocate the receivers to the nearest GLL node
+for i=1:OUTnx, [OUTdist(i),OUTix(i)] = min( abs(coor-OUTx(i)) ); end
+OUTx = coor(OUTix);
+OUTd = zeros(OUTnx,NT);
+OUTv = zeros(OUTnx,NT);
+OUTa = zeros(OUTnx,NT);
+
+%REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH
+%% STEP 3: SOLVER  
+% 
+% The time-discretization of M*a = -K*d +F is done here with an
+% explicit Newmark scheme (HHT-alpha) with alpha=beta=1/2 and gamma=1
+%
+% 	M*a(t+1) = -K*d(t+1/2) +F(t+1/2)
+% 	d(t+1) = d(t) + dt*v(t) +0.5*dt^2 *a(t+1)
+% 	v(t+1) = v(t) + dt*a(t+1)
+%
+% implemented as an explicit predictor-corrector:
+
+for it=1:NT, % Begin time loop ...
+
+%   1. predictor at mid-step t+0.5, assuming a(t+1)=0
+%	dpre = d(t) +0.5*dt*v(t)
+  d = d + 0.5*dt*v; 
+
+%   2. solve for a(t+1) in M*a(t+1) = -K*dpre +F(t+0.5)
+%
+  a(:) = 0; 				% Predicted internal forces 
+  for e=1:NEL, 				% at mid-step, -K*dpre,
+    ix = iglob(:,e); 			% temporarily stored in global array "a".
+    a(ix) = a(ix) - K(:,:,e)*d(ix) ;	% Note again the usage of "iglob" to
+  end 					% assemble the elementary contributions.
+  a(Fix) = a(Fix) + Ft(it); 		% Add source
+  a = a ./M ; 				% Solve: a(t+1) = (-K*d_mid +F)/M
+
+%   3. corrector
+%	v(t+1) = v(t) + dt*a(t+1)
+%	d(t+1) = dpre + 0.5*dt*v(t+1)
+  v = v + dt*a;
+  d = d + 0.5*dt*v;
+
+
+%REPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASHREPLACE_WITH_DASH_DASH
+% STEP 4: OUTPUT
+  
+  OUTd(:,it) = d(OUTix);
+  OUTv(:,it) = v(OUTix);
+  OUTa(:,it) = a(OUTix);
+
+end % ... of time loop
+
+PlotSeisTrace(OUTx,t,OUTv);
+
+##### SOURCE END #####
+-->
+   </body>
+</html>
