@@ -15,17 +15,24 @@ function [ Kglob ] = assemble_K_matrix_2d(NelX, NelY, NGLL, dxe, dye, nglob, igl
     dy_deta = 0.5*dye;
     jac = dx_dxi*dy_deta;
     
-    w_temp = zeros(NGLL,NGLL);
-    Ke_temp = zeros(NGLL,NGLL);
+    w_temp = zeros(NGLL,NGLL); % material properties
+    Ke_temp = zeros(NGLL,NGLL); % temporary matrix
     
-    Ke = zeros(NGLL*NGLL,NGLL*NGLL,Nel);
+    % Stiffness matrix for each element
+    %Ke = zeros(NGLL*NGLL,NGLL*NGLL,Nel);
+    Ke = zeros(NGLL*NGLL,NGLL*NGLL);
     
-    term1 = 0. ; term2 = 0.;    
+    % Matrix assembly
+    I = zeros(length(iglob(:)),1);
+    J = zeros(length(iglob(:)),1);
+    V = zeros(length(iglob(:)),1);
+    
+    ct = 1;
     
     del = eye(NGLL); % identity matrix: kronecker delta
     
     for eo = 1:Nel
-        ke_temp(:,:) = 0.;
+        Ke_temp(:,:) = 0.;
         w_temp = W(:,:,eo);
         
         for i = 1:NGLL
@@ -43,33 +50,10 @@ function [ Kglob ] = assemble_K_matrix_2d(NelX, NelY, NGLL, dxe, dye, nglob, igl
             end
         end
         
-        Ke(:,:,eo) = reshape(Ke_temp, NGLL*NGLL,NGLL*NGLL);
+        Ke(:,:) = reshape(Ke_temp, NGLL*NGLL,NGLL*NGLL);
             
-    end
-     
-    
-    %-----------------------------
-    % Assemble as a global matrix
-    %-----------------------------
-                                               
-    % 1. Naive assembly: super slow for large systems
-    % Kglob = spalloc(nglob,nglob,NGLL*nglob); % preallocate sparse matrix of size
-                                               % nglob x nglob with space
-                                               % for NGLL x nglob nonzeros
-%     for eo = 1:Nel
-%        ig = iglob(:,:,eo);
-%        Kglob(ig(:),ig(:)) =  Kglob(ig(:), ig(:)) + Ke(:,:,eo);
-%     end
-    
-
-    % 2. faster matrix assembly
-    I = zeros(length(iglob(:)),1);
-    J = zeros(length(iglob(:)),1);
-    V = zeros(length(iglob(:)),1);
-    
-    ct = 1;
-    
-    for eo = 1:Nel
+        % Assembly
+        % I,J,V are such that K(I,J) = V
         ig = iglob(:,:,eo);
         ig = ig(:);
         
@@ -77,14 +61,23 @@ function [ Kglob ] = assemble_K_matrix_2d(NelX, NelY, NGLL, dxe, dye, nglob, igl
             for i = 1:length(ig)
                 I(ct) = ig(i);
                 J(ct) = ig(j);
-                V(ct) = Ke(i,j,eo);
+                V(ct) = Ke(i,j);
                 ct = ct + 1;
             end
         end
     end
     
+    % Faster assembly as SparseCSC format
     Kglob = sparse(I,J,V,nglob,nglob);
     
+    % Naive assembly: super slow for large systems
+    % Kglob = spalloc(nglob,nglob,NGLL*nglob); % preallocate sparse matrix of size
+                                               % nglob x nglob with space
+                                               % for NGLL x nglob nonzeros
+    % for eo = 1:Nel
+    %    ig = iglob(:,:,eo);
+    %    Kglob(ig(:),ig(:)) =  Kglob(ig(:), ig(:)) + Ke(:,:,eo);
+    % end
     
 end
 

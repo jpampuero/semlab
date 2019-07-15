@@ -23,6 +23,10 @@
 %
 % July 13 2018: vectorized and parallelized version, runs faster
 %
+% July 15 2019: Assembled stiffness as a sparse matrix: 
+%               the multiplication is faster
+%
+%
 % This script is intended for tutorial purposes.
 %
 % Jean-Paul Ampuero	ampuero@gps.caltech.edu
@@ -39,7 +43,7 @@ LY=50e3/3;
 LZ=10e3;  % thickness of the seismogenic region (approximately accounted for). Turned off if LZ=inf.
 %NELX = 75; NELY = 25; P = 8; % polynomial degree
 %NELX = 1600; NELY = 800; P = 4; % polynomial degree
-NELX = 80; NELY = 40; P = 4; 
+NELX = 400; NELY = 200; P = 4; 
 SYM_X = 1; % If SYM_X=1, enforce symmetry with respect to x=0
            % (the left boundary becomes a free surface)
 %********
@@ -74,7 +78,7 @@ rho   = zeros(NGLL,NGLL);	% density will not be stored
 mu    = zeros(NGLL,NGLL);	% shear modulus will not be stored
 
 %**** Set here the parameters of the time solver : ****
-NT = 1100; %2200; % number of timesteps
+NT = 2200; %2200; % number of timesteps
 CFL   = 0.6; 			% stability number = CFL_1D / sqrt(2)
 %********
 
@@ -133,7 +137,7 @@ Ksparse = assemble_K_matrix_2d(NELX, NELY, NGLL, dxe, dye, nglob, iglob,W);
 
 % Sparse matrix multiplication is faster in transpose form if the initial
 % format is SparseMatrixCSC
-% also taking the negative of sparse matrix inside the time loop takes a
+% and taking the negative of sparse matrix inside the time loop takes a
 % lot of time.
 nKsparse = -Ksparse';
 
@@ -252,8 +256,6 @@ cpu_t = cputime;
  % internal forces -K*d(t+1) 
  a = nKsparse*d;
  % stored in global array 'a'
- %switch to local representation (element-by-element) 
-  %a_elem = d(iglob) + eta.*v(iglob);
 
  % absorbing boundaries:
   if ~SYM_X,  a(iBcL) = a(iBcL) - BcLC .* v(iBcL); end
